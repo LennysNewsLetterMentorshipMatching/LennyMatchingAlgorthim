@@ -198,7 +198,7 @@ combined = mentors_flitered.join(mentees_flitered,how='cross',lsuffix='-mentor',
 # checking 
 # combined.to_csv('combined.csv', index=False) 
 
-
+#Distance Estmation
 dE = distanceEstimator(mentor_mentee_question_mapping)
 combined['distance_score'] = combined.apply(dE.estimateDistance, axis = 'columns')
 # combined.to_csv('combined_score.csv', index=False)
@@ -206,44 +206,51 @@ combined['matched_criteria'] = combined.apply(dE.matched, axis = 'columns')
 # combined.to_csv('combined_apply.csv', index=False) 
 combined = combined.sort_values(by=['distance_score'])
 
-matched_mentors = {}
-matched_mentees = {}
-matched_list = []
-
-mentee_id = 'Email-mentee'
-mentor_id = 'Email-mentor'
-
-for index, row in combined.iterrows():
-    #print(type(row['Id-mentor']))
-    #print(type(row['Id-mentee']))
-    #print(row['Id-mentee'] == row['Id-mentor'])
-    # print('Check if this prints correctly', row['matched_criteria'])  # Check if this prints correctly
+# Matching Process:
+def match_pairs(matched_list, combined, max_mentees_per_mentor):
+    mentor_id = 'Email-mentor'
+    mentee_id = 'Email-mentee'
     
-    # Extract YOE for mentor and mentee
-    mentor_yoe = float(row["Avg Year of YOE-mentor"])
-    mentee_yoe = float(row["Avg Year of YOE-mentee"])
-    # Skip this iteration if mentor's YOE is less than mentee's YOE
-    if mentor_yoe <= mentee_yoe:
-        continue
-    # Existing conditions and logic    
-    if row[mentor_id] not in matched_mentors:
-        matched_mentors[row[mentor_id]] = 0
-    if row[mentee_id] not in matched_mentees:
-        matched_mentees[row[mentee_id]] = 0
-    if matched_mentors[row[mentor_id]] >= max_mentees_per_mentor:
-        continue
-    if matched_mentees[row[mentee_id]] >=1:
-        continue
-    if row[mentee_id] == row[mentor_id]:
-        #print('skipped, matching to self')
-        continue
-    matched_mentors[row[mentor_id]] = matched_mentors[row[mentor_id]] + 1
-    matched_mentees[row[mentee_id]] = matched_mentees[row[mentee_id]] + 1
-    matched_list.append({mentor_id:row[mentor_id],mentee_id:row[mentee_id], 'distance_score':row['distance_score'], 'matched':str(row['matched_criteria'])})
+    matched_mentors = {}
+    matched_mentees = {}
 
-results = pd.DataFrame(matched_list)
+    # Function to define the conditions for a valid match
+    def match_condition(row):
+        mentor_yoe = float(row["Avg Year of YOE-mentor"])
+        mentee_yoe = float(row["Avg Year of YOE-mentee"])
+        return (
+            mentor_yoe > mentee_yoe and
+            row[mentor_id] not in matched_mentors and
+            row[mentee_id] not in matched_mentees and
+            matched_mentors[row[mentor_id]] < max_mentees_per_mentor and
+            matched_mentees[row[mentee_id]] < 2 and
+            row[mentee_id] != row[mentor_id]
+        )
+    
+    # Function to update the matched pairs and append to the list
+    def update_matched(row):
+        matched_mentors[row[mentor_id]] += 1
+        matched_mentees[row[mentee_id]] += 1
+        matched_list.append({
+            mentor_id: row[mentor_id],
+            mentee_id: row[mentee_id],
+            'distance_score': row['distance_score'],
+            'matched': str(row['matched_criteria'])
+        })
+        return matched_list
+
+    # Iterative approach for matching pairs
+    for _, row in filter(lambda r: match_condition(r[1]), combined.iterrows()):
+        update_matched(row)
+
+    return matched_list
+
+# Call the match_pairs function to get the updated matched list
+matched_list_result = match_pairs([], combined, max_mentees_per_mentor)
+results = pd.DataFrame(matched_list_result)
+
+# Save the results to CSV files
 results.to_csv('matched_list.csv', index=False)
-reuslts_wide = results.join(mentors_flitered.set_index('Email'),on = mentor_id, rsuffix='-mentor').join(mentees_flitered.set_index('Email'),on = mentee_id,lsuffix='-mentor', rsuffix='-mentee')
-
-results.to_csv('matched.csv', index=False)
-reuslts_wide.to_csv('matched_wide.csv', index=False)
+results_wide = results.join(mentors_flitered.set_index('Email'), on=mentor_id, rsuffix='-mentor').join(mentees_flitered.set_index('Email'), on=mentee_id, lsuffix='-mentor', rsuffix='-mentee')
+results_wide.to_csv('matched.csv', index=False)
+results_wide.to_csv('matched_wide.csv', index=False)

@@ -1,6 +1,6 @@
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
-from functools import reduce
+
 
 #define max mentees/Users/ijac/side-projects/lenny_mentorship/Mentee_for_matching.csv /Users/ijac/side-projects/lenny_mentorship/Mentor_for_matching.csv
 max_mentees_per_mentor = 2

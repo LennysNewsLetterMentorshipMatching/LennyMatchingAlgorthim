@@ -240,9 +240,9 @@ for index, row in combined.iterrows():
     matched_mentees[row[mentee_id]] = matched_mentees[row[mentee_id]] + 1
     matched_list.append({mentor_id:row[mentor_id],mentee_id:row[mentee_id], 'distance_score':row['distance_score'], 'matched':str(row['matched_criteria'])})
 
-results = pd.DataFrame(matched_list)
 results.to_csv('matched_list.csv', index=False)
-reuslts_wide = results.join(mentors_flitered.set_index('Email'),on = mentor_id, rsuffix='-mentor').join(mentees_flitered.set_index('Email'),on = mentee_id,lsuffix='-mentor', rsuffix='-mentee')
+results_wide = mentors_filtered.join(mentees_filtered.set_index('Email'), on='Email', rsuffix='-mentor', lsuffix='-mentee')
 
-results.to_csv('matched.csv', index=False)
-reuslts_wide.to_csv('matched_wide.csv', index=False)
+
+results_wide.to_csv('matched.csv', index=False)
+results_wide.to_csv('matched_wide.csv', index=False)

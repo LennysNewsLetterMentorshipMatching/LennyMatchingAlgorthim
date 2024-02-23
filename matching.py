@@ -1,12 +1,14 @@
+#Updated Code with N Commits
 import pandas as pd
 from sklearn.preprocessing import MultiLabelBinarizer
+
 
 #define max mentees/Users/ijac/side-projects/lenny_mentorship/Mentee_for_matching.csv /Users/ijac/side-projects/lenny_mentorship/Mentor_for_matching.csv
 max_mentees_per_mentor = 2
 
 #load data
-mentors = pd.read_csv('Mentor_for_matching.csv')
-mentees = pd.read_csv('Mentee_for_matching.csv')
+mentors = pd.read_csv('Mentor_Submissions.csv')
+mentees = pd.read_csv('Mentee_Submissions.csv')
 
 
 #Clean DF
@@ -16,10 +18,10 @@ def same_merge(x): return ','.join(x[x.notnull()].astype(str))
 #define new DataFrame that merges columns with same names together
 mentees = mentees.groupby(level=0, axis=1).apply(lambda x: x.apply(same_merge, axis=1))
 
-print("mentor columns:", mentors.columns.values)
-print("mentee columns:", mentees.columns.values)
+#print("mentor columns:", mentors.columns.values)
+#print("mentee columns:", mentees.columns.values)
 
-mentors_flitered = mentors.filter(items=["Email",
+mentors_filtered = mentors.filter(items=["Email",
                  "Offset",
                  'In-Person Meeting Location',
                  "Avg Year of YOE",
@@ -31,7 +33,8 @@ mentors_flitered = mentors.filter(items=["Email",
                  'Created on'
                 ])
 
-mentees_flitered = mentees.filter(items=["Email",
+
+mentees_filtered = mentees.filter(items=["Email",
                  "Offset",
                  'In-Person Meeting Location',
                  "Avg Year of YOE",
@@ -43,11 +46,12 @@ mentees_flitered = mentees.filter(items=["Email",
                  'Created on'
                 ])
 
-print("mentor filter columns:", mentors_flitered.columns.values)
-print("mentee filter columns:", mentees_flitered.columns.values)
 
-# # display(mentors_flitered) 
-# # display(mentees_flitered)
+#print("mentor filter columns:", mentors_filtered.columns)
+#print("mentee filter columns:", mentees_filtered.columns)
+
+# # display(mentors_filtered) 
+# # display(mentees_filtered)
 
 # #Input comma seperated list of value
 # #Output list of values with whitespace stipped off
@@ -158,8 +162,8 @@ class distanceEstimator:
         distance_score, matched = self._estimateDistance(row)
         return matched
 
-print("mentor column value:", mentors_flitered.columns.values)
-print("mentee column value:", mentees_flitered.columns.values)
+#print("mentor column value:", mentors_filtered.columns.values)
+#print("mentee column value:", mentees_filtered.columns.values)
 
 mentor_mentee_question_mapping = [{'mentee_question':'Offset',
                                    'mentor_question':'Offset',
@@ -189,13 +193,13 @@ mentor_mentee_question_mapping = [{'mentee_question':'Offset',
 
 for mapping in mentor_mentee_question_mapping:
   if mapping['question_type'] == 'multi-select':
-    mentees_flitered[mapping['mentee_question']] = mentees_flitered[mapping['mentee_question']].apply(multiSelect)
-    mentors_flitered[mapping['mentor_question']] = mentors_flitered[mapping['mentor_question']].apply(multiSelect)
+    mentees_filtered[mapping['mentee_question']] = mentees_filtered[mapping['mentee_question']].apply(multiSelect)
+    mentors_filtered[mapping['mentor_question']] = mentors_filtered[mapping['mentor_question']].apply(multiSelect)
 
 
-combined = mentors_flitered.join(mentees_flitered,how='cross',lsuffix='-mentor',rsuffix='-mentee')
+combined = mentors_filtered.join(mentees_filtered,how='cross',lsuffix='-mentor',rsuffix='-mentee')
 # checking 
-# combined.to_csv('combined.csv', index=False) 
+combined.to_csv('combined.csv', index=False,) 
 
 #Distance Estmation
 dE = distanceEstimator(mentor_mentee_question_mapping)
@@ -205,44 +209,64 @@ combined['matched_criteria'] = combined.apply(dE.matched, axis = 'columns')
 # combined.to_csv('combined_apply.csv', index=False) 
 combined = combined.sort_values(by=['distance_score'])
 
-matched_mentors = {}
-matched_mentees = {}
-matched_list = []
 
-mentee_id = 'Email-mentee'
-mentor_id = 'Email-mentor'
-
-for index, row in combined.iterrows():
-    #print(type(row['Id-mentor']))
-    #print(type(row['Id-mentee']))
-    #print(row['Id-mentee'] == row['Id-mentor'])
-    # print('Check if this prints correctly', row['matched_criteria'])  # Check if this prints correctly
+# Matching Process:
+def match_pairs(matched_list, combined, max_mentees_per_mentor):
+    mentor_id = 'Email-mentor'
+    mentee_id = 'Email-mentee'
     
-    # Extract YOE for mentor and mentee
-    mentor_yoe = float(row["Avg Year of YOE-mentor"])
-    mentee_yoe = float(row["Avg Year of YOE-mentee"])
-    # Skip this iteration if mentor's YOE is less than mentee's YOE
-    if mentor_yoe <= mentee_yoe:
-        continue
-    # Existing conditions and logic    
-    if row[mentor_id] not in matched_mentors:
-        matched_mentors[row[mentor_id]] = 0
-    if row[mentee_id] not in matched_mentees:
-        matched_mentees[row[mentee_id]] = 0
-    if matched_mentors[row[mentor_id]] >= max_mentees_per_mentor:
-        continue
-    if matched_mentees[row[mentee_id]] >=1:
-        continue
-    if row[mentee_id] == row[mentor_id]:
-        #print('skipped, matching to self')
-        continue
-    matched_mentors[row[mentor_id]] = matched_mentors[row[mentor_id]] + 1
-    matched_mentees[row[mentee_id]] = matched_mentees[row[mentee_id]] + 1
-    matched_list.append({mentor_id:row[mentor_id],mentee_id:row[mentee_id], 'distance_score':row['distance_score'], 'matched':str(row['matched_criteria'])})
+    matched_mentors = {email: 0 for email in combined[mentor_id].unique()}
+    matched_mentees = {email: 0 for email in combined[mentee_id].unique()}
 
-results.to_csv('matched_list.csv', index=False)
+    # Function to define the conditions for a valid match
+    def match_condition(row):
+        mentor_yoe = float(row["Avg Year of YOE-mentor"])
+        mentee_yoe = float(row["Avg Year of YOE-mentee"])
+        return (
+            mentor_yoe > mentee_yoe and
+            row[mentor_id] not in matched_mentors and
+            row[mentee_id] not in matched_mentees and
+            matched_mentors[row[mentor_id]] < max_mentees_per_mentor and
+            matched_mentees[row[mentee_id]] < 2 and
+            row[mentee_id] != row[mentor_id]
+        )
+    
+    # Function to update the matched pairs and append to the list
+    def update_matched(row):
+        matched_mentors[row[mentor_id]] += 1
+        matched_mentees[row[mentee_id]] += 1
+        matched_list.append({
+            mentor_id: row[mentor_id],
+            mentee_id: row[mentee_id],
+            'distance_score': row['distance_score'],
+            'matched': str(row['matched_criteria'])
+        })
+        return matched_list
+
+    # Iterative approach for matching pairs
+    for _, row in filter(lambda r: match_condition(r[1]), combined.iterrows()):
+        update_matched(row)
+
+    return matched_list
+
+print()
+
+# Call the match_pairs function to get the updated matched list
+matched_list_result = match_pairs([], combined, max_mentees_per_mentor)
+results = pd.DataFrame(matched_list_result)
+results.to_csv('results.csv', index=False, sep='\t')
+
+# Save the results to CSV files
+results.to_csv('matched_list.csv', index=False, sep='\t')
 results_wide = mentors_filtered.join(mentees_filtered.set_index('Email'), on='Email', rsuffix='-mentor', lsuffix='-mentee')
 
 
-results_wide.to_csv('matched.csv', index=False)
-results_wide.to_csv('matched_wide.csv', index=False)
+results_wide.to_csv('matched.csv', index=False, sep='\t')
+results_wide.to_csv('matched_wide.csv', index=False, sep='\t')
+
+# Display the CSV files for download
+from IPython.display import FileLink
+display(FileLink('matched_list.csv'))
+display(FileLink('matched.csv'))
+display(FileLink('matched_wide.csv'))
+display(FileLink('results.csv'))

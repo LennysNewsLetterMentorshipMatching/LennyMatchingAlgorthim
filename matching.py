@@ -1,272 +1,92 @@
-#Updated Code with N Commits
 import pandas as pd
-from sklearn.preprocessing import MultiLabelBinarizer
+#!pip install pulp #uncomment this part the first time you run the code to install the package as it's not a standard one.
+from pulp import LpMaximize, LpProblem, LpVariable, lpSum
+from IPython.display import FileLink
 
+# Load mentor and mentee data
+mentors = pd.read_csv('Mentor_Submissions2024(1).csv')
+mentees = pd.read_csv('Mentee_Submissions2024(1).csv')
 
-#define max mentees/Users/ijac/side-projects/lenny_mentorship/Mentee_for_matching.csv /Users/ijac/side-projects/lenny_mentorship/Mentor_for_matching.csv
-max_mentees_per_mentor = 2
+# Clean and filter mentor and mentee data
+mentors_filtered = mentors.filter(items=["Email", "Offset", "Avg Year of YOE", "Important Attribute - First", "Important Attribute - Second", "Important Attribute - Third"])
+mentees_filtered = mentees.filter(items=["Email", "Offset", "Avg Year of YOE", "Important Attribute - First", "Important Attribute - Second", "Important Attribute - Third"])
 
-#load data
-mentors = pd.read_csv('Mentor_Submissions.csv')
-mentees = pd.read_csv('Mentee_Submissions.csv')
+# Define distance calculation function
+def calculate_score(mentor, mentee):
+    score = 1000
+    yoe_diff = mentor['Avg Year of YOE'] - mentee['Avg Year of YOE']
+    offset_diff = abs(mentor['Offset'] - mentee['Offset'])
 
+    # Define attribute weights
+    attribute_weights = {
+        'No Preference': 0,
+        'Years of Experience': 50,
+        'Role': 40,
+        'Industry': 30,
+        'Company Stage': 20,
+        'Topic': 10,
+        'In-Person Meeting': 5,
+        'Shared Identity': 5
+    }
 
-#Clean DF
-#define function to merge columns with same names together
-def same_merge(x): return ','.join(x[x.notnull()].astype(str))
+    # Include the values of the first, second, and third important attributes
+    for attr in ["Important Attribute - First", "Important Attribute - Second", "Important Attribute - Third"]:
+        weight = attribute_weights[mentor[attr].strip()]  # Strip leading/trailing spaces
+        if weight > 0:
+            score += weight
 
-#define new DataFrame that merges columns with same names together
-mentees = mentees.groupby(level=0, axis=1).apply(lambda x: x.apply(same_merge, axis=1))
+    if yoe_diff > 8:
+        score += 50
+    elif 4 <= yoe_diff <= 8:
+        score += 100
+    elif 2 <= yoe_diff <= 3:
+        score += 160
+    elif yoe_diff <= 0:
+        score -= 1000
 
-#print("mentor columns:", mentors.columns.values)
-#print("mentee columns:", mentees.columns.values)
+    # Penalty for offset difference
+    score -= offset_diff * 10
 
-mentors_filtered = mentors.filter(items=["Email",
-                 "Offset",
-                 'In-Person Meeting Location',
-                 "Avg Year of YOE",
-                 'Roles',
-                 'Industry',
-                 'Company Stage',
-                 'Topics',
-                 'Most Important Attribute',
-                 'Created on'
-                ])
+    return score
 
+# Create LP problem instance
+prob = LpProblem("Mentor_Mentee_Matching", LpMaximize)
 
-mentees_filtered = mentees.filter(items=["Email",
-                 "Offset",
-                 'In-Person Meeting Location',
-                 "Avg Year of YOE",
-                 'Roles',
-                 'Industry',
-                 'Company Stage',
-                 'Topics',
-                 'Most Important Attribute',
-                 'Created on'
-                ])
+# Create decision variables for mentor-mentee pairs
+mentor_mentee_pairs = [(mentor_index, mentee_index) for mentor_index in range(len(mentors_filtered)) for mentee_index in range(len(mentees_filtered))]
+pair_vars = LpVariable.dicts("Pair", mentor_mentee_pairs, cat='Binary')
 
+# Define the objective function
+prob += lpSum(pair_vars[mentor_index, mentee_index] * calculate_score(mentors_filtered.iloc[mentor_index], mentees_filtered.iloc[mentee_index]) 
+              for mentor_index, mentee_index in mentor_mentee_pairs)
 
-#print("mentor filter columns:", mentors_filtered.columns)
-#print("mentee filter columns:", mentees_filtered.columns)
+# Add constraints:
+# Each mentee is matched with at most one mentor
+for mentee_index in range(len(mentees_filtered)):
+    prob += lpSum(pair_vars[mentor_index, mentee_index] for mentor_index in range(len(mentors_filtered))) <= 1
 
-# # display(mentors_filtered) 
-# # display(mentees_filtered)
+# Each mentor can have a maximum of two mentees
+for mentor_index in range(len(mentors_filtered)):
+    prob += lpSum(pair_vars[mentor_index, mentee_index] for mentee_index in range(len(mentees_filtered))) <= 2
+    prob += lpSum(pair_vars[mentor_index, mentee_index] for mentee_index in range(len(mentees_filtered))) >= 1
 
-# #Input comma seperated list of value
-# #Output list of values with whitespace stipped off
-def clean_multiselect(x):
-    if isinstance(x, str):
-        return list(map(str.strip,x.split(',')))
-    else:
-        return []
-      
-# #Input Dataframe and multi-select field to Binarize
-def MultiLableBinarize_df(input_frame, collumn_name):
-    nested_list = list(map(clean_multiselect,input_frame[collumn_name].to_list()))
-    mlb = MultiLabelBinarizer()
-    mlb_df = pd.DataFrame(mlb.fit_transform(nested_list), columns=mlb.classes_)
-    bigger = pd.concat([input_frame,mlb_df],axis=1)
-    return bigger
-  
-  
-class multiSelect:
-    def __init__(self, data = ['empty']):
-        if isinstance(data, str):
-            self.data = clean_multiselect(data)
-        else:
-            self.data = data
-    def __repr__(self):
-        return repr(self.data)
+# Solve the linear programming problem
+prob.solve()
 
-class distanceEstimator:
-    def __init__(self, mentor_mentee_question_mapping = []):
-        self.mentor_mentee_question_mapping = mentor_mentee_question_mapping
-        
-    def multiSelectDistance(self,row,mentee_selection,mentor_selection):
-        distance_score = 0
-        matched = []
-        if isinstance(mentee_selection,list) and isinstance(mentor_selection,list):
-            for selection in mentee_selection:
-                if selection in mentor_selection:
-                    distance_score = distance_score - 10
-                    matched.append(selection)
-        return distance_score, matched
-    
-    def yoeDistance(self, mentor_yoe, mentee_yoe):
-        difference = mentor_yoe - mentee_yoe
-        if difference >= 8:
-            return 50
-        elif 4 <= difference < 8:
-            return 100
-        elif 2 <= difference < 4:
-            return 160
-        else:  # difference <= 1 or mentor_yoe <= mentee_yoe
-            return -1000
-    
-    def _estimateDistance(self, row):
-        matched = []
-        distance_score = 1000
-        
-        # # List of attribute names to check for a match with "Most Important Attribute"
-        # attribute_list = ["Offset", 'In-Person Meeting Location', "Avg Year of YOE",
-        #               'Roles', 'Industry', 'Company Stage', 'Topics']
-    
-        # # Get the mentor's and mentee's "Most Important Attribute"
-        # mentor_important_attribute = row["Most Important Attribute-mentor"]
-        # mentee_important_attribute = row["Most Important Attribute-mentee"]
-        
-        # # Determine the attribute to be given higher weight
-        # important_attribute = None
-        # if mentor_important_attribute == mentee_important_attribute and mentor_important_attribute in attribute_list:
-        #     important_attribute = mentor_important_attribute
-    
-    
-        # Iterate over the mapping of questions
-        for mapping in self.mentor_mentee_question_mapping:
-          if mapping['mentee_question'] == mapping['mentor_question']:
-            mentee_question = mapping['mentee_question'] + "-mentee"
-            mentor_question = mapping['mentee_question'] + '-mentor'
-          else:
-            mentee_question = mapping['mentee_question']
-            mentor_question = mapping['mentor_question']
-          if mapping['question_type'] == 'multi-select':
-            mentee_selection = row[mentee_question].data
-            mentor_selection = row[mentor_question].data
+# Extract matched pairs from the solved LP problem
+matched_pairs = {}
+for (mentor_index, mentee_index), var in pair_vars.items():
+    if var.value() == 1:
+        mentor_email = mentors_filtered.loc[mentor_index, 'Email']
+        mentee_email = mentees_filtered.loc[mentee_index, 'Email']
+        matched_pairs.setdefault(mentor_email, []).append(mentee_email)
 
-            distance_score_temp, matched_temp = self.multiSelectDistance(row,mentee_selection,mentor_selection)
+# Create DataFrame for matched pairs
+matched_df = pd.DataFrame([(mentee, mentor) for mentor, mentees in matched_pairs.items() for mentee in mentees],
+                           columns=['Mentee', 'Mentor'])
 
-            # Adjust the weight if the current attribute is the important one -- TBD
-            # if mapping['mentee_question'] == important_attribute:
-            #     distance_score -= distance_score_temp * 10 * mapping['question_weight']
-            # else:
-            #     distance_score -= distance_score_temp * mapping['question_weight']
-            
-            # matched = matched + matched_temp
-            distance_score = distance_score + distance_score_temp*mapping['question_weight']
-            matched = matched + matched_temp
-        
-        # Adding the YOE scoring
-        mentor_yoe = float(row["Avg Year of YOE-mentor"])
-        mentee_yoe = float(row["Avg Year of YOE-mentee"])
-        distance_score -= self.yoeDistance(mentor_yoe, mentee_yoe)
-    
-    
-        return distance_score, multiSelect(matched)
-
-    def estimateDistance(self, row):
-        distance_score, matched = self._estimateDistance(row)
-        return distance_score
-
-    def matched(self,row):
-        distance_score, matched = self._estimateDistance(row)
-        return matched
-
-#print("mentor column value:", mentors_filtered.columns.values)
-#print("mentee column value:", mentees_filtered.columns.values)
-
-mentor_mentee_question_mapping = [{'mentee_question':'Offset',
-                                   'mentor_question':'Offset',
-                                   'question_type': 'multi-select',
-                                   'question_weight': 2,},
-                                  {'mentee_question':'In-Person Meeting Location',
-                                   'mentor_question':'In-Person Meeting Location',
-                                   'question_type': 'multi-select',
-                                   'question_weight': 1,},
-                                  {'mentee_question':'Roles',
-                                   'mentor_question':'Roles',
-                                   'question_type': 'multi-select',
-                                   'question_weight': 8,},
-                                  {'mentee_question':'Industry',
-                                   'mentor_question':'Industry',
-                                   'question_type': 'multi-select',
-                                   'question_weight': 6,},
-                                  {'mentee_question':'Company Stage',
-                                   'mentor_question':'Company Stage',
-                                   'question_type': 'multi-select',
-                                   'question_weight': 5,},
-                                  {'mentee_question':'Topics',
-                                   'mentor_question':'Topics',
-                                   'question_type': 'multi-select',
-                                   'question_weight': 7,}
-                                  ]
-
-for mapping in mentor_mentee_question_mapping:
-  if mapping['question_type'] == 'multi-select':
-    mentees_filtered[mapping['mentee_question']] = mentees_filtered[mapping['mentee_question']].apply(multiSelect)
-    mentors_filtered[mapping['mentor_question']] = mentors_filtered[mapping['mentor_question']].apply(multiSelect)
-
-
-combined = mentors_filtered.join(mentees_filtered,how='cross',lsuffix='-mentor',rsuffix='-mentee')
-# checking 
-combined.to_csv('combined.csv', index=False,) 
-
-#Distance Estmation
-dE = distanceEstimator(mentor_mentee_question_mapping)
-combined['distance_score'] = combined.apply(dE.estimateDistance, axis = 'columns')
-# combined.to_csv('combined_score.csv', index=False)
-combined['matched_criteria'] = combined.apply(dE.matched, axis = 'columns')
-# combined.to_csv('combined_apply.csv', index=False) 
-combined = combined.sort_values(by=['distance_score'])
-
-
-# Matching Process:
-def match_pairs(matched_list, combined, max_mentees_per_mentor):
-    mentor_id = 'Email-mentor'
-    mentee_id = 'Email-mentee'
-    
-    matched_mentors = {email: 0 for email in combined[mentor_id].unique()}
-    matched_mentees = {email: 0 for email in combined[mentee_id].unique()}
-
-    # Function to define the conditions for a valid match
-    def match_condition(row):
-        mentor_yoe = float(row["Avg Year of YOE-mentor"])
-        mentee_yoe = float(row["Avg Year of YOE-mentee"])
-        return (
-            mentor_yoe > mentee_yoe and
-            row[mentor_id] not in matched_mentors and
-            row[mentee_id] not in matched_mentees and
-            matched_mentors[row[mentor_id]] < max_mentees_per_mentor and
-            matched_mentees[row[mentee_id]] < 2 and
-            row[mentee_id] != row[mentor_id]
-        )
-    
-    # Function to update the matched pairs and append to the list
-    def update_matched(row):
-        matched_mentors[row[mentor_id]] += 1
-        matched_mentees[row[mentee_id]] += 1
-        matched_list.append({
-            mentor_id: row[mentor_id],
-            mentee_id: row[mentee_id],
-            'distance_score': row['distance_score'],
-            'matched': str(row['matched_criteria'])
-        })
-        return matched_list
-
-    # Iterative approach for matching pairs
-    for _, row in filter(lambda r: match_condition(r[1]), combined.iterrows()):
-        update_matched(row)
-
-    return matched_list
-
-print()
-
-# Call the match_pairs function to get the updated matched list
-matched_list_result = match_pairs([], combined, max_mentees_per_mentor)
-results = pd.DataFrame(matched_list_result)
-results.to_csv('results.csv', index=False, sep='\t')
-
-# Save the results to CSV files
-results.to_csv('matched_list.csv', index=False, sep='\t')
-results_wide = mentors_filtered.join(mentees_filtered.set_index('Email'), on='Email', rsuffix='-mentor', lsuffix='-mentee')
-
-
-results_wide.to_csv('matched.csv', index=False, sep='\t')
-results_wide.to_csv('matched_wide.csv', index=False, sep='\t')
+# Save matched pairs to CSV
+matched_df.to_csv('matched_pairs2024_pulp_modified.csv', index=False, sep='\t')
 
 # Display the CSV files for download
-from IPython.display import FileLink
-display(FileLink('matched_list.csv'))
-display(FileLink('matched.csv'))
-display(FileLink('matched_wide.csv'))
-display(FileLink('results.csv'))
+display(FileLink('matched_pairs2024_pulp_modified.csv'))

@@ -4,8 +4,8 @@ from pulp import LpMaximize, LpProblem, LpVariable, lpSum
 from IPython.display import FileLink
 
 # Load mentor and mentee data
-mentors = pd.read_csv('Mentor_Submissions2024(1).csv')
-mentees = pd.read_csv('Mentee_Submissions2024(1).csv')
+mentors = pd.read_csv('Mentor_Submissions2024.csv')
+mentees = pd.read_csv('Mentee_Submissions2024.csv')
 
 # Clean and filter mentor and mentee data
 mentors_filtered = mentors.filter(items=["Email", "Offset", "Avg Year of YOE", "Important Attribute - First", "Important Attribute - Second", "Important Attribute - Third"])

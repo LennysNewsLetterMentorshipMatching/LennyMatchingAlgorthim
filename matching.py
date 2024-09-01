@@ -1,5 +1,4 @@
 import pandas as pd
-#!pip install pulp #uncomment this part the first time you run the code to install the package as it's not a standard one.
 from pulp import LpMaximize, LpProblem, LpVariable, lpSum
 from IPython.display import FileLink
 
@@ -8,10 +7,23 @@ mentors = pd.read_csv('Mentor_Submissions2024.csv')
 mentees = pd.read_csv('Mentee_Submissions2024.csv')
 
 # Clean and filter mentor and mentee data
-mentors_filtered = mentors.filter(items=["Email", "Offset", "Avg Year of YOE", "Important Attribute - First", "Important Attribute - Second", "Important Attribute - Third"])
-mentees_filtered = mentees.filter(items=["Email", "Offset", "Avg Year of YOE", "Important Attribute - First", "Important Attribute - Second", "Important Attribute - Third"])
+mentors_filtered = mentors.filter(items=["Email", "Offset", "Avg Year of YOE", "Important Attribute - First", 
+                                         "Important Attribute - Second", "Important Attribute - Third", "Topics"])
+mentees_filtered = mentees.filter(items=["Email", "Offset", "Avg Year of YOE", "Important Attribute - First", 
+                                         "Important Attribute - Second", "Important Attribute - Third", "Topics"])
 
-# Define distance calculation function
+# Function to process comma-separated topics into a list
+def clean_multiselect(x):
+    if isinstance(x, str):
+        return [item.strip() for item in x.split(',')]
+    else:
+        return []
+
+# Apply the cleaning function to the topics column
+mentors_filtered['Topics'] = mentors_filtered['Topics'].apply(clean_multiselect)
+mentees_filtered['Topics'] = mentees_filtered['Topics'].apply(clean_multiselect)
+
+# Define a function to calculate matching score based on "Important Attributes", "Years of Experience", and "Topics"
 def calculate_score(mentor, mentee):
     score = 1000
     yoe_diff = mentor['Avg Year of YOE'] - mentee['Avg Year of YOE']
@@ -29,12 +41,13 @@ def calculate_score(mentor, mentee):
         'Shared Identity': 5
     }
 
-    # Include the values of the first, second, and third important attributes
+    # Calculate score based on important attributes
     for attr in ["Important Attribute - First", "Important Attribute - Second", "Important Attribute - Third"]:
-        weight = attribute_weights[mentor[attr].strip()]  # Strip leading/trailing spaces
-        if weight > 0:
+        weight = attribute_weights.get(mentor[attr].strip(), 0)  # Use .get to avoid KeyErrors
+        if weight > 0 and mentor[attr].strip() == mentee[attr].strip():
             score += weight
 
+    # Calculate score based on years of experience
     if yoe_diff > 8:
         score += 50
     elif 4 <= yoe_diff <= 8:
@@ -47,13 +60,18 @@ def calculate_score(mentor, mentee):
     # Penalty for offset difference
     score -= offset_diff * 10
 
+    # Calculate score based on matching topics
+    common_topics = set(mentor['Topics']).intersection(set(mentee['Topics']))
+    score += len(common_topics) * 20  # Assume 20 points per common topic
+
     return score
 
 # Create LP problem instance
 prob = LpProblem("Mentor_Mentee_Matching", LpMaximize)
 
 # Create decision variables for mentor-mentee pairs
-mentor_mentee_pairs = [(mentor_index, mentee_index) for mentor_index in range(len(mentors_filtered)) for mentee_index in range(len(mentees_filtered))]
+mentor_mentee_pairs = [(mentor_index, mentee_index) for mentor_index in range(len(mentors_filtered)) 
+                       for mentee_index in range(len(mentees_filtered))]
 pair_vars = LpVariable.dicts("Pair", mentor_mentee_pairs, cat='Binary')
 
 # Define the objective function

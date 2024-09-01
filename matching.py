@@ -88,6 +88,11 @@ for mentor_index in range(len(mentors_filtered)):
     prob += lpSum(pair_vars[mentor_index, mentee_index] for mentee_index in range(len(mentees_filtered))) <= 2
     prob += lpSum(pair_vars[mentor_index, mentee_index] for mentee_index in range(len(mentees_filtered))) >= 1
 
+# Constraint: Ensure that matched mentor and mentee are within two offset units of each other
+for mentor_index, mentee_index in mentor_mentee_pairs:
+    offset_diff = abs(mentors_filtered.iloc[mentor_index]['Offset'] - mentees_filtered.iloc[mentee_index]['Offset'])
+    prob += pair_vars[mentor_index, mentee_index] * offset_diff <= 2
+
 # Solve the linear programming problem
 prob.solve()
 

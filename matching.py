@@ -3,8 +3,8 @@ from pulp import LpMaximize, LpProblem, LpVariable, lpSum
 from IPython.display import FileLink
 
 # Load mentor and mentee data
-mentors = pd.read_csv('Mentor_Submissions2024.csv')
-mentees = pd.read_csv('Mentee_Submissions2024.csv')
+mentors = pd.read_csv('MentorSubFall2024.csv')
+mentees = pd.read_csv('MenteeSubFall2024.csv')
 
 # Clean and filter mentor and mentee data
 mentors_filtered = mentors.filter(items=["Email", "Offset", "Avg Year of YOE", "Important Attribute - First", 
@@ -92,6 +92,10 @@ for mentor_index in range(len(mentors_filtered)):
 for mentor_index, mentee_index in mentor_mentee_pairs:
     offset_diff = abs(mentors_filtered.iloc[mentor_index]['Offset'] - mentees_filtered.iloc[mentee_index]['Offset'])
     prob += pair_vars[mentor_index, mentee_index] * offset_diff <= 2
+
+# Make sure participants are not matched with themselves
+    if mentor_email == mentee_email:
+        prob += pair_vars[mentor_index, mentee_index] == 0
 
 # Solve the linear programming problem
 prob.solve()

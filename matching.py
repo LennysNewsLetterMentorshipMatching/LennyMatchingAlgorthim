@@ -6,6 +6,9 @@ from IPython.display import FileLink
 mentors = pd.read_csv('MentorSubFall2024.csv')
 mentees = pd.read_csv('MenteeSubFall2024.csv')
 
+# Load previously matched pairs
+previous_matches = pd.read_csv('matched_pairs2024_pulp.csv', sep='\t')
+
 # Clean and filter mentor and mentee data
 mentors_filtered = mentors.filter(items=["Email", "Offset", "Avg Year of YOE", "Important Attribute - First", 
                                          "Important Attribute - Second", "Important Attribute - Third", "Topics"])
@@ -90,11 +93,18 @@ for mentor_index in range(len(mentors_filtered)):
 
 # Constraint: Ensure that matched mentor and mentee are within two offset units of each other
 for mentor_index, mentee_index in mentor_mentee_pairs:
+    mentor_email = mentors_filtered.iloc[mentor_index]['Email']
+    mentee_email = mentees_filtered.iloc[mentee_index]['Email']
+    
+    # Add constraint to prevent matching if mentor and mentee have the same email
+    if mentor_email == mentee_email:
+        prob += pair_vars[mentor_index, mentee_index] == 0
+    
     offset_diff = abs(mentors_filtered.iloc[mentor_index]['Offset'] - mentees_filtered.iloc[mentee_index]['Offset'])
     prob += pair_vars[mentor_index, mentee_index] * offset_diff <= 2
 
-# Make sure participants are not matched with themselves
-    if mentor_email == mentee_email:
+    # Constraint to prevent rematching previously matched pairs
+    if not previous_matches[(previous_matches['Mentor'] == mentor_email) & (previous_matches['Mentee'] == mentee_email)].empty:
         prob += pair_vars[mentor_index, mentee_index] == 0
 
 # Solve the linear programming problem
